@@ -1,1 +1,1 @@
-web: racket -l looloozoo/server.rkt
+web: racket -l looloozoo/server

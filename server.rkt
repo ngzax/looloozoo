@@ -1,3 +1,8 @@
+#lang racket
+
+(require web-server/servlet
+         web-server/servlet-env)
+
 (define (start req)
   (response/xexpr
    '(html (head (title "Racket Heroku App"))
