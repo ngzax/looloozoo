@@ -1,1 +1,1 @@
-web: racket -l server
+web: racket -l looloozoo/server
