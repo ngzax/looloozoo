@@ -1,0 +1,730 @@
+; === BIN-PACKING GAME ===
+
+(require 2htdp/universe)
+(require 2htdp/image)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Constants
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define PIXEL-WIDTH 300) ; pixels
+(define PIXEL-HEIGHT 600) ; pixels
+(define GRID-HEIGHT 20) ; grid units
+(define GRID-WIDTH 10) ; grid units
+(define CELL-SIZE (/ PIXEL-WIDTH GRID-WIDTH)) ; pixels
+(define TICK-SPEED .2) ; seconds/tick
+(define BG (empty-scene PIXEL-WIDTH PIXEL-HEIGHT))
+
+; Grid units X increase to the right
+; Grid units Y increase down
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Data Definitions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; A Block is a (make-block Number Number Color)
+; X and Y are in grid cells
+(define-struct block (x y color))
+
+; A Tetra is a (make-tetra Posn BSet)
+; The center point is the point around which the tetra rotates
+; When it spins.
+; The posn is in grid cells
+(define-struct tetra (center blocks))
+
+; A Set of Blocks (BSet) is one of:
+; - empty
+; - (cons Block BSet)
+; Order does not matter
+
+; A World is a (make-world Tetra BSet)
+; The BSet represents the pile of blocks at the bottom of the screen.
+(define-struct world (tetra pile))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 7 "Kinds" of Tetras
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; BSet
+(define O (cons (make-block 0 0 'green)
+                (cons (make-block 0 1 'green)
+                      (cons (make-block 1 0 'green)
+                            (cons (make-block 1 1 'green) empty)))))
+
+(define I (cons (make-block 0 0 'blue)
+                (cons (make-block 1 0 'blue)
+                      (cons (make-block 2 0 'blue)
+                            (cons (make-block 3 0 'blue) empty)))))
+
+(define L (cons (make-block 2 0 'purple)
+                (cons (make-block 0 1 'purple)
+                      (cons (make-block 1 1 'purple)
+                            (cons (make-block 2 1 'purple) empty)))))
+
+(define J (cons (make-block 0 0 'lightblue)
+                (cons (make-block 0 1 'lightblue)
+                      (cons (make-block 1 1 'lightblue)
+                            (cons (make-block 2 1 'lightblue) empty)))))
+
+(define T (cons (make-block 1 0 'orange)
+                (cons (make-block 0 1 'orange)
+                      (cons (make-block 1 1 'orange)
+                            (cons (make-block 2 1 'orange) empty)))))
+
+(define Z (cons (make-block 0 0 'pink)
+                (cons (make-block 1 0 'pink)
+                      (cons (make-block 1 1 'pink)
+                            (cons (make-block 2 1 'pink) empty)))))
+
+(define S (cons (make-block 1 0 'red)
+                (cons (make-block 2 0 'red)
+                      (cons (make-block 0 1 'red)
+                            (cons (make-block 1 1 'red) empty)))))
+
+; Tetras
+
+(define tetO (make-tetra (make-posn 0 0) O))
+(define tetI (make-tetra (make-posn 0 0) I))
+(define tetL (make-tetra (make-posn 0 1) L))
+(define tetJ (make-tetra (make-posn 0 0) J))
+(define tetT (make-tetra (make-posn 0 1) T))
+(define tetZ (make-tetra (make-posn 0 0) Z))
+(define tetS (make-tetra (make-posn 0 1) S))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; make-random-tetra : Number -> Tetra
+; makes tetra based on number (which will be randomly selected)
+(define (make-random-tetra n)
+  (cond [(= n 0) tetO]
+        [(= n 1) tetI]
+        [(= n 2) tetL]
+        [(= n 3) tetJ]
+        [(= n 4) tetT]
+        [(= n 5) tetZ]
+        [(= n 6) tetS]))
+
+;Initial World: 
+(define WORLD0 (make-world (make-random-tetra (random 7)) empty))
+
+; Samples:
+
+(define tet1 (make-tetra (make-posn 10 20)
+             (cons (make-block 7 19 'red)
+                (cons (make-block 7 20 'red)
+                      (cons (make-block 8 20 'red)
+                            (cons (make-block 9 20 'red) empty))))))
+(define tet2 (make-tetra (make-posn 10 20)
+             (cons (make-block 7 19 'red)
+                (cons (make-block 7 20 'red)
+                      (cons (make-block -1 20 'red)
+                            (cons (make-block 9 -1 'red) empty))))))
+(define tet3 (make-tetra (make-posn 9 5)
+                         (list (make-block 9 5 'blue) (make-block 10 5 'blue))))
+(define tet4 (make-tetra (make-posn 10 20)
+                         (list (make-block 9 5 'blue) (make-block 8 5 'blue))))
+(define pile1 (list (make-block 1 1 'blue) (make-block 2 2 'red)))
+(define pile2 (list (make-block 10 10 'blue) (make-block 15 5 'red)))
+(define world1 (make-world tetO pile1))
+(define world2 (make-world tet1 pile1))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Drawing Stuff
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; place-image/grid : Image Number Number Image -> Image
+; Adds an image using grid coordinates.
+(define (place-image/grid fg x y bg)
+  (place-image fg
+               (* x CELL-SIZE)
+               (* y CELL-SIZE)
+               bg))
+
+; draw-block : Block Image -> Image
+; Draws a block.
+(define (draw-block b scn)
+  (place-image/grid (square CELL-SIZE "solid" (block-color b))
+                    (block-x b)
+                    (block-y b)
+                    scn))
+
+(draw-block (first pile1) BG)
+
+; draw-blocks : BSet Image -> Image
+; Draws all the blocks in a BSet.
+(define (draw-blocks s scn)
+  (cond [(empty? s) scn]
+        [(cons? s) (draw-block (first s) (draw-blocks (rest s) scn))]))
+
+(draw-blocks pile1 BG)
+
+; draw-tetra : Tetra Image -> Image
+; Draws the set of blocks in a Tetra
+(define (draw-tetra t scn)
+  (draw-blocks (tetra-blocks t) scn))
+
+(draw-tetra tetI BG)
+
+; draw-pile : BSet Image -> Image
+(define (draw-pile s scn)
+  (draw-blocks s scn))
+
+(draw-pile pile1 BG)
+
+; render : World -> Image
+; Draws the world's tetra and the pile of blocks
+(define (render w)
+  (draw-tetra (world-tetra w) (draw-pile (world-pile w) BG)))
+
+(render world1)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Collisions/Bounds
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; block-on-block? : Block Block -> Boolean
+; Is the first block on top of the second?
+(define (block-on-block? b1 b2)
+  (and (= (block-x b1) (block-x b2))
+       (= (block-y b1) (- (block-y b2) 1))))
+
+(check-expect (block-on-block? (make-block 1 1 'blue) (make-block 1 2 'blue))
+              true)
+(check-expect (block-on-block? (make-block 1 1 'blue) (make-block 2 1 'blue))
+              false)
+
+; block-on-blocks? : Block BSet -> Boolean
+; Is this block on top of any of the blocks in the set?
+(define (block-on-blocks? b set)
+  (cond [(empty? set) false]
+        [else (if (block-on-block? b (first set))
+              true
+              (block-on-blocks? b (rest set)))]))
+
+(check-expect (block-on-blocks? (make-block 3 3 'blue) pile1) false)
+(check-expect (block-on-blocks? (make-block 2 1 'blue) pile1) true)
+(check-expect (block-on-blocks? (make-block 1 2 'blue) empty) false)
+
+; blocks-on-blocks? : BSet BSet -> Boolean
+; Are any of the blocks in the first set on top of
+;  any of the blocks in the second set?
+(define (blocks-on-blocks? s1 s2)
+  (cond [(empty? s1) false]
+        [else (if (block-on-blocks? (first s1) s2)
+                  true
+                  (blocks-on-blocks? (rest s1) s2))]))
+
+(check-expect (blocks-on-blocks? (list (make-block 3 3 'blue)
+                                       (make-block 2 1 'blue)) pile1) true)
+(check-expect (blocks-on-blocks? pile1 (list (make-block 3 3 'blue)
+                                             (make-block 5 5 'blue))) false)
+(check-expect (blocks-on-blocks? pile1 empty) false)
+(check-expect (blocks-on-blocks? empty pile1) false)
+
+; tetra-on-blocks? : Tetra BSet -> Boolean
+; Are any of the blocks in the tetra on top of
+;   any of the blocks in the set?
+(define (tetra-on-blocks? t s)
+  (blocks-on-blocks? (tetra-blocks t) s))
+
+(check-expect (tetra-on-blocks? tetO pile1) true)
+(check-expect (tetra-on-blocks? tetO pile2) false)
+(check-expect (tetra-on-blocks? tetO empty) false)
+
+; block-on-floor? : Block -> Boolean
+; Is the block touching the bottom edge of the grid?
+(define (block-on-floor? b)
+  (>= (block-y b) GRID-HEIGHT))
+
+(check-expect (block-on-floor? (make-block 10 20 'blue)) true)
+(check-expect (block-on-floor? (make-block 10 0 'red)) false)
+
+; blocks-on-floor? BSet -> Boolean
+; Are any of the blocks in the set touching the bottom edge of the grid?
+(define (blocks-on-floor? s)
+  (cond [(empty? s) false]
+        [(cons? s) (if (block-on-floor? (first s))
+                       true
+                       (blocks-on-floor? (rest s)))]))
+
+(check-expect (blocks-on-floor? pile1) false)
+(check-expect (blocks-on-floor? (list (make-block 10 20 'blue )
+                                      (make-block 10 0 'red))) true)
+(check-expect (blocks-on-floor? empty) false)
+
+; tetra-on-floor? : Tetra -> Boolean
+; Is the tetra touching the floor?
+(define (tetra-on-floor? t)
+  (blocks-on-floor? (tetra-blocks t)))
+
+(check-expect (tetra-on-floor? tetO) false)
+(check-expect (tetra-on-floor? tet1) true)
+
+; block-in-walls? : Block -> Boolean
+; Is the block within left and right bounds of the grid?
+(define (block-in-walls? b)
+  (and (<= (block-x b) GRID-WIDTH)
+       (>= (block-x b) 0)))
+
+(check-expect (block-in-walls? (make-block 10 0 'blue)) true)
+(check-expect (block-in-walls? (make-block 11 0 'blue)) false)
+(check-expect (block-in-walls? (make-block 0 0 'blue)) true)
+(check-expect (block-in-walls? (make-block -1 0 'blue)) false)
+
+; blocks-in-walls? : BSet -> Boolean
+; Are the blocks in the set within the left and right bounds of the grid?
+(define (blocks-in-walls? s)
+  (cond [(empty? s) true]
+        [else (if (block-in-walls? (first s))
+                  (blocks-in-walls? (rest s))
+                  false)]))
+
+(check-expect (blocks-in-walls? pile1) true)
+(check-expect (blocks-in-walls? (list (make-block 10 0 'blue)
+                                      (make-block 11 0 'blue))) false)
+(check-expect (blocks-in-walls? (list (make-block 0 0 'blue)
+                                      (make-block -1 0 'blue))) false)
+(check-expect (blocks-in-walls? empty) true)
+
+; tetra-in-walls? : Tetra -> Boolean
+; Is the tetra within the left and right bounds of the grid?
+(define (tetra-in-walls? t)
+  (blocks-in-walls? (tetra-blocks t)))
+
+(check-expect (tetra-in-walls? tetO) true)
+(check-expect (tetra-in-walls? tet2) false)
+
+; block-over-top? : Block -> Boolean
+; Is the block over the top of the screen?
+(define (block-over-top? b)
+  (<= (block-y b) 0))
+
+; blocks-over-top? : BSet -> Boolean
+; Are any of the blocks in the set over the top of the screen?
+(define (blocks-over-top? s)
+  (cond [(empty? s) false]
+        [else (if (block-over-top? (first s))
+                  true
+                  (blocks-over-top? (rest s)))]))
+
+(check-expect (blocks-over-top? (tetra-blocks tet2)) true)
+(check-expect (blocks-over-top? (tetra-blocks tet1)) false)
+(check-expect (blocks-over-top? empty) false)
+
+; pile-over-top : World -> Boolean
+; Is the pile over the top of the screen?
+(define (pile-over-top? w)
+  (blocks-over-top? (world-pile w)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Shift Stuff
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; shift-posn-left : Posn -> Posn
+; Moves posn 1 grid unit to the left
+(define (shift-posn-left p)
+  (make-posn (- (posn-x p) 1) (posn-y p)))
+
+(check-expect (shift-posn-left (make-posn 1 1)) (make-posn 0 1))
+
+; shift-posn-right : Posn -> Posn
+; Moves posn 1 grid unit to the right
+(define (shift-posn-right p)
+  (make-posn (+ (posn-x p) 1) (posn-y p)))
+
+(check-expect (shift-posn-right (make-posn 1 1)) (make-posn 2 1))
+
+; shift-posn-down : Posn -> Posn
+; Moves posn 1 grid unit down
+(define (shift-posn-down p)
+  (make-posn (posn-x p) (+ 1 (posn-y p))))
+
+(check-expect (shift-posn-down (make-posn 1 1)) (make-posn 1 2))
+
+; block-right : Block -> Block
+; Moves block 1 grid unit right
+(define (block-right b)
+  (make-block (+ (block-x b) 1) (block-y b) (block-color b)))
+
+(check-expect (block-right (make-block 1 1 'blue)) (make-block 2 1 'blue))
+
+; block-left : Block -> Block
+; Moves block 1 grid unit left
+(define (block-left b)
+  (make-block (- (block-x b) 1) (block-y b) (block-color b)))
+
+(check-expect (block-left (make-block 1 1 'blue)) (make-block 0 1 'blue))
+
+; block-down : Block -> Block
+; Moves block 1 grid unit down
+(define (block-down b)
+  (make-block (block-x b) (+ (block-y b) 1) (block-color b)))
+
+(check-expect (block-down (make-block 1 1 'blue)) (make-block 1 2 'blue))
+
+; blocks-right : BSet -> BSet
+; Shifts all blocks in the set right one grid space
+(define (blocks-right s)
+  (cond [(empty? s) empty]
+        [else (cons (block-right (first s)) (blocks-right (rest s)))]))
+
+(check-expect (blocks-right pile1) (list (make-block 2 1 'blue)
+                                         (make-block 3 2 'red)))
+(check-expect (blocks-right empty) empty)
+
+; blocks-left : BSet -> BSet
+; Shifts all blocks in the set left one grid space
+(define (blocks-left s)
+  (cond [(empty? s) empty]
+        [else (cons (block-left (first s)) (blocks-left (rest s)))]))
+
+(check-expect (blocks-left pile1) (list (make-block 0 1 'blue)
+                                         (make-block 1 2 'red)))
+(check-expect (blocks-left empty) empty)
+
+; blocks-down : BSet -> BSet
+; Shifts all blocks in the set down one grid space
+(define (blocks-down s)
+  (cond [(empty? s) empty]
+        [else (cons (block-down (first s)) (blocks-down (rest s)))]))
+
+(check-expect (blocks-down pile1) (list (make-block 1 2 'blue)
+                                         (make-block 2 3 'red)))
+(check-expect (blocks-down empty) empty)
+
+; tetra-right : Tetra -> Tetra
+; Shifts a tetra right one grid space
+; A tetra is a (make-tetra Posn BSet)
+(define (tetra-right t)
+  (make-tetra (shift-posn-right (tetra-center t))
+              (blocks-right (tetra-blocks t))))
+
+(check-expect (tetra-right tet1)
+              (make-tetra (make-posn 11 20)
+                          (list (make-block 8 19 'red)
+                                (make-block 8 20 'red)
+                                (make-block 9 20 'red)
+                                (make-block 10 20 'red))))
+
+; tetra-left : Tetra -> Tetra
+; Shifts a tetra left one grid space
+; A tetra is a (make-tetra Posn BSet)
+(define (tetra-left t)
+  (make-tetra (shift-posn-left (tetra-center t))
+              (blocks-left (tetra-blocks t))))
+
+(check-expect (tetra-left tet1)
+              (make-tetra (make-posn 9 20)
+                          (list (make-block 6 19 'red)
+                                (make-block 6 20 'red)
+                                (make-block 7 20 'red)
+                                (make-block 8 20 'red))))
+
+; tetra-down : Tetra -> Tetra
+; Shifts a tetra down one grid space
+; A tetra is a (make-tetra Posn BSet)
+(define (tetra-down t)
+  (make-tetra (shift-posn-down (tetra-center t))
+              (blocks-down (tetra-blocks t))))
+
+(check-expect (tetra-down tet1)
+              (make-tetra (make-posn 10 21)
+                          (list (make-block 7 20 'red)
+                                (make-block 7 21 'red)
+                                (make-block 8 21 'red)
+                                (make-block 9 21 'red))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Rotate Stuff
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; block-rotate-ccw : Posn Block -> Block
+; Rotate the block 90 counterclockwise around the posn.
+(define (block-rotate-ccw center set)
+  (make-block (+ (posn-x center)
+                 (- (posn-y center)
+                    (block-y set)))
+              (+ (posn-y center)
+                 (- (block-x set)
+                    (posn-x center)))
+              (block-color set)))
+
+; block-rotate-cw : Posn Block -> Block
+; Rotate the block 90 clockwise around the posn.
+(define (block-rotate-cw center set)
+  (block-rotate-ccw center (block-rotate-ccw center (block-rotate-ccw center set))))
+
+
+; blocks-rotate-ccw : Posn BSet -> BSet
+; Rotate a group of blocks 90 counterclockwise around the specificed posn
+(define (blocks-rotate-ccw center set)
+  (cond [(empty? set) empty]
+        [else (cons (block-rotate-ccw center (first set))
+                    (blocks-rotate-ccw center (rest set)))]))
+
+; blocks-rotate-cw : Posn BSet -> BSet
+; Rotate a group of blocks 90 clockwise around the specificed posn
+(define (blocks-rotate-cw center set)
+  (cond [(empty? set) empty]
+        [else (cons (block-rotate-cw center (first set))
+                    (blocks-rotate-cw center (rest set)))]))
+
+; tetra-rotate-ccw : Posn Tetra -> Tetra
+; Rotate a Tetra 90 counterclockwise around its center
+(define (tetra-rotate-ccw t)
+  (make-tetra (tetra-center t)
+              (blocks-rotate-ccw (tetra-center t) (tetra-blocks t))))
+
+; tetra-rotate-cw : Posn Tetra -> Tetra
+; Rotate a Tetra 90 clockwise around its center
+(define (tetra-rotate-cw t)
+  (make-tetra (tetra-center t)
+              (blocks-rotate-cw (tetra-center t) (tetra-blocks t))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Restrictions on Movements
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; block-right? : Block -> Boolean
+; Can you move the block right without running into the wall?
+(define (block-right? b)
+  (block-in-walls? (make-block (+ (block-x b) 1)
+                               (block-y b)
+                               (block-color b))))
+
+(check-expect (block-right? (make-block 10 5 'blue)) false)
+(check-expect (block-right? (make-block 9 5 'blue)) true)
+
+; block-left? : Block -> Boolean
+; Can you move the block left without running into the wall?
+(define (block-left? b)
+  (block-in-walls? (make-block (- (block-x b) 1)
+                               (block-y b)
+                               (block-color b))))
+
+(check-expect (block-left? (make-block 0 5 'blue)) false)
+(check-expect (block-left? (make-block 1 5 'blue)) true)
+
+; blocks-right? : BSet -> Boolean
+; Can you move the set of blocks right without running into the wall?
+(define (blocks-right? s)
+  (cond [(empty? s) true]
+        [else (if (block-right? (first s))
+                  (blocks-right? (rest s))
+                  false)]))
+
+(check-expect (blocks-right? (list (make-block 9 5 'blue)
+                                   (make-block 10 5 'blue))) false)
+(check-expect (blocks-right? (list (make-block 9 5 'blue)
+                                   (make-block 8 5 'blue))) true)
+
+; blocks-left? : BSet -> Boolean
+; Can you move the set of blocks left without running into the wall?
+(define (blocks-left? s)
+  (cond [(empty? s) true]
+        [else (if (block-left? (first s))
+                  (blocks-left? (rest s))
+                  false)]))
+
+(check-expect (blocks-left? (list (make-block 1 5 'blue)
+                                   (make-block 0 5 'blue))) false)
+(check-expect (blocks-left? (list (make-block 1 5 'blue)
+                                   (make-block 2 5 'blue))) true)
+
+; tetra-right? : Tetra -> Boolean
+; Can the tetra move right without running into the wall?
+(define (tetra-right? t)
+  (blocks-right? (tetra-blocks t)))
+
+(check-expect (tetra-right? tet3) false)
+(check-expect (tetra-right? tet4) true)
+
+; tetra-left? : Tetra -> Boolean
+; Can the tetra move left without running into the wall?
+(define (tetra-left? t)
+  (blocks-left? (tetra-blocks t)))
+
+(check-expect (tetra-left? tet2) false)
+(check-expect (tetra-left? tet4) true)
+
+
+; blocks-rotate-ccw? : Posn BSet -> Boolean
+; Can the set of blocks rotate ccw without running into the wall?
+(define (blocks-rotate-ccw? center set)
+  (cond [(empty? set) true]
+        [else (if (blocks-in-walls? (blocks-rotate-ccw center set))
+                  true
+                  false)]))
+
+; tetra-rotate-ccw? : Tetra -> Boolean
+; Can the tetra rotate ccw without running into the wall?
+(define (tetra-rotate-ccw? t)
+  (blocks-rotate-ccw? (tetra-center t) (tetra-blocks t)))
+
+(check-expect (tetra-rotate-ccw? tetO) false)
+(check-expect (tetra-rotate-ccw? tet3) true)
+(check-expect (blocks-rotate-ccw? (make-posn 1 1) empty) true)
+
+; blocks-rotate-cw? : Posn BSet -> Boolean
+; Can the set of blocks rotate cw without running into the wall?
+(define (blocks-rotate-cw? center set)
+  (cond [(empty? set) true]
+        [else (if (blocks-in-walls? (blocks-rotate-ccw center set))
+                  true
+                  false)]))
+
+; tetra-rotate-ccw? : Tetra -> Boolean
+; Can the tetra rotate cw without running into the wall?
+(define (tetra-rotate-cw? t)
+  (blocks-rotate-cw? (tetra-center t) (tetra-blocks t)))
+
+(check-expect (tetra-rotate-cw? tet1) false)
+(check-expect (tetra-rotate-cw? tet3) true)
+(check-expect (blocks-rotate-cw? (make-posn 1 1) empty) true)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Running the Game
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Starts at WORLD0.
+
+; Tetra falls continuously UNTIL it hits one of:
+; -- floor
+; -- another tetra
+
+; After this "collision", another world is created
+; -- new "pile" with tetra from previous world
+; -- new "tetra", generated randomly.
+
+; make-random-tetra : Number -> Tetra
+; makes tetra based on number (which will be randomly selected)
+(define (randomize-tetras n)
+  (cond [(= n 0) tetO]
+        [(= n 1) tetI]
+        [(= n 2) tetL]
+        [(= n 3) tetJ]
+        [(= n 4) tetT]
+        [(= n 5) tetZ]
+        [(= n 6) tetS]))
+
+; add-tetra-to-set : Tetra Bset -> Bset
+; appends the tetra onto the set of blocks
+(define (add-tetra-to-set t s)
+  (append (tetra-blocks t) s))
+
+; add-tetra-to-pile : World -> W
+(define (add-tetra-to-pile w)
+  (add-tetra-to-set (world-tetra w) (world-pile w)))
+
+; collision : World -> World
+; In the case of the tetra being on the floor or on top of a block,
+; -- call add-tetra to the pile
+; -- call new-tetra
+(define (collision w)
+  (make-world (randomize-tetras (random 7)) (add-tetra-to-pile w)))
+
+; next-world : World -> World
+; Generates the next world. 
+; -- if the tetra is on the floor or on top of a block, it will call collision
+; -- if not, the tetra will shift down
+(define (next-world w)
+  (if (or (tetra-on-floor? (world-tetra w))
+          (tetra-on-blocks? (world-tetra w) (world-pile w)))
+      (collision w)
+      (make-world (tetra-down (world-tetra w)) (world-pile w))))
+      
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; KEY-EVENTS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Left-arrow : moves tetra left
+; Right-arrow : moves tetra right
+; s : rotates tetra clockwise
+; a : rotates tetra counterclockwise
+
+; got-key : World KeyEvent -> World
+; Changes world based on keystrokes
+; - Left-arrow : moves tetra left
+; - Right-arrow : moves tetra right
+; - s : rotates tetra clockwise
+; - a : rotates tetra counterclockwise
+(define (got-key w ke)
+  (cond [(string=? ke "left") (if
+                               (tetra-left? (world-tetra w))
+                               (make-world (tetra-left (world-tetra w))
+                                               (world-pile w))
+                               w)]
+        
+        [(string=? ke "right") (if
+                               (tetra-right? (world-tetra w))
+                               (make-world (tetra-right (world-tetra w))
+                                               (world-pile w))
+                               w)]
+        
+        [(string=? ke "s") (if
+                            (tetra-rotate-cw? (world-tetra w))
+                            (make-world (tetra-rotate-cw (world-tetra w))
+                                            (world-pile w))
+                            w)]
+        
+        [(string=? ke "a") (if
+                            (tetra-rotate-ccw? (world-tetra w))
+                            (make-world (tetra-rotate-ccw (world-tetra w))
+                                            (world-pile w))
+                            w)]
+        [else w]))
+
+(check-expect (got-key world1 "left") (make-world tetO pile1))
+(check-expect (got-key world2 "left") (make-world
+                                       (make-tetra (make-posn 9 20)
+                                             (list (make-block 6 19 'red)
+                                                   (make-block 6 20 'red)
+                                                   (make-block 7 20 'red)
+                                                   (make-block 8 20 'red)))
+                                       pile1))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Ending the Game
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Game ends when pile-over-top returns true
+; at this point, the number of blocks in the pile should be returned
+
+; 
+
+;; count-blocks : BSet -> Number
+;; How many blocks are there in the set?
+;(define (count-blocks s)
+;  (cond [(empty? s) 0]
+;        [else (if (cons? s)
+;                  (+ 
+
+; score : World -> Number
+; How many blocks are there in the pile?
+(define (score w)
+  (length (world-pile w)))
+
+(check-expect (score WORLD0) 0)
+(check-expect (score world1) 2)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; BIG-BANG
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define (main _unused)
+  (big-bang WORLD0
+            [on-tick next-world TICK-SPEED]
+            [to-draw render]
+            [on-key got-key]
+            [stop-when pile-over-top?]))
+
+(score (main 0))
+                            
+   
