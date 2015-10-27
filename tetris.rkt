@@ -1,8 +1,12 @@
+#lang racket
+
 ; === BIN-PACKING GAME ===
 ; look here for project assignment: http://www.ccs.neu.edu/course/cs2500f15/ps6.html
 
+(require graphics/graphics)
 (require 2htdp/universe)
 (require 2htdp/image)
+(require test-engine/racket-tests)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants
