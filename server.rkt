@@ -15,7 +15,7 @@
                  8080))
 
 (serve/servlet start
-               #:servlet-path  ·"/"
+               #:servlet-path  "/"
                #:listen-ip     #f
                #:port          port
                #:command-line? #t)
