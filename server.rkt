@@ -12,10 +12,10 @@
 
 (define port (if (getenv "PORT")
                  (string->number (getenv "PORT"))
-                 4000))
+                 8080))
 
 (serve/servlet start
-               #:servlet-path "/"
-               #:listen-ip #f
-               #:port port
+               #:servlet-path  "/"
+               #:listen-ip     #f
+               #:port          port
                #:command-line? #t)
